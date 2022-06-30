@@ -1,0 +1,7 @@
+workspace
+.dump.log
+**psk-try**
+**.cap
+**.csv
+**/handshakes/**
+/lib/vendor/*

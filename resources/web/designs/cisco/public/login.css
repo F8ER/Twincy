@@ -1,0 +1,91 @@
+.configLoginScreen .k-button {
+	padding: 6px 20px;
+	border-radius: 25px;
+	color: #232f34;
+	border: 1px solid #9ec654;
+	outline: 0;
+	font-size: 16pt;
+	margin-right: 4px;
+	min-width: 130px;
+	background-color: #9ec654;
+	color: #ffffff;
+	cursor: pointer;
+}
+
+.configLoginScreen .k-button:disabled,
+.configLoginScreen .k-button[disabled] {
+	background-color: #d8edaf;
+}
+
+.configLoginScreen {
+	width: 100%;
+	height: 100%;
+	position: absolute;
+	top: 0;
+	display: block;
+	background-color: #E6E9F0;
+	text-align: center;
+	overflow: auto;
+	color: #70717B;
+	font-family: CiscoSansThin, "Helvetica Neue", Arial, Tahoma, sans-serif;
+}
+
+.configLoginScreen .configLoginScreenContainer {
+	margin: auto;
+	display: inline-block;
+	padding: 1rem;
+	width: 500px;
+	background-color: #ffffff;
+	position: relative;
+	top: 50%;
+	-webkit-transform: translate(0%, -50%);
+	-moz-transform: translate(0%, -50%);
+	-ms-transform: translate(0%, -50%);
+	transform: translate(0%, -50%);
+}
+
+.configLoginScreen .configLoginCompanyLogoWrapper {
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	font-size: 5.5 rem;
+	color: #70717B;
+	margin: 70px 0 60px 0;
+}
+
+.configLoginScreen .configImage {
+	text-align: left;
+	white-space: nowrap;
+	margin: 10px 0 2000px 0;
+	position: relative;
+	left: 220px;
+}
+
+
+
+.configLoginScreen .configLoginScreenContainer .configProductName {
+	font-size: 38px;
+	line-height: 60px;
+	padding: 0 5px 20px 5px;
+}
+
+.configLoginScreen .configWelcomeMessage {
+	font-size: 13px;
+}
+
+.configLoginScreen .configLoginScreenContainer .configLoginCopyright {
+	margin: 0 0 20px 0;
+	font-size: 12px;
+	text-align: justify;
+}
+
+.configLoginScreen .configLoginScreenContainer .configLoginFields {
+	display: center;
+	margin: 80px 0;
+}
+
+.configLoginScreen .configLoginScreenContainer .configLoginUsernamepassword {
+	text-align: center;
+    width: 85%;
+	color: black;
+}
