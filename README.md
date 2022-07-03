@@ -56,7 +56,7 @@ This project is for educational purposes only. The authors do not endorse or pro
 
 ## Preview
 
-[![Watch the video](https://user-images.githubusercontent.com/25136754/177021469-5f2b774a-e647-4e16-8633-43757d39297b.png)](https://mega.nz/file/tIMnERCA#zDsUKsN2I3vqCh0Y_71bEqHxKnU_tv81DAwUyYizYrQ) 
+[![Watch the video](https://user-images.githubusercontent.com/25136754/177021469-5f2b774a-e647-4e16-8633-43757d39297b.png)](https://mega.nz/file/tdsC0SrT#Qa3irO0VjBRGiP_6WcXd6r6wnfVRjOwh4aotd_Pk_mE) 
 
 ## Install
 
