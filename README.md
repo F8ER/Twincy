@@ -54,6 +54,10 @@ This project is for educational purposes only. The authors do not endorse or pro
   Temporary data is inside session by default
 ```
 
+## Preview
+
+[![Watch the video](https://user-images.githubusercontent.com/25136754/177020239-7d98a17c-9aa5-4c24-9425-ccf1a4e04939.png)](https://mega.nz/embed/kcNSVLYL#dQVyphz8g00RJ1cB_WV9twUICOUA22rlY45ffOx-Nsk)
+
 ## Install
 
 Dependencies: `aircrack-ng`, `mdk4`, `xdotool`, `tshark`, `php-cgi`, `lighttpd`, `isc-dhcp-server`, `hostapd`.
