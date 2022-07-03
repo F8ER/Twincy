@@ -60,7 +60,7 @@ This project is for educational purposes only. The authors do not endorse or pro
 
 ## Install
 
-Dependencies: `aircrack-ng`, `mdk4`, `xdotool`, `tshark`, `php-cgi`, `lighttpd`, `isc-dhcp-server`, `hostapd`.
+Dependencies: `aircrack-ng`, `mdk4`, `xdotool`, `tshark`, `php-cgi`, `lighttpd`, `isc-dhcp-server`, `hostapd`, `wpasupplicant`.
 
 ```bash
 # sudo apt-get update && sudo apt-get install -y aircrack-ng mdk4;
