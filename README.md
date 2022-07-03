@@ -85,7 +85,7 @@ git clone 'https://github.com/aircrack-ng/mdk4.git' &&
 
 popd;
 # rm -rf './dependencies';
-sudo apt-get install -y xdotool tshark php-cgi lighttpd isc-dhcp-server;
+sudo apt-get install -y xdotool tshark php-cgi lighttpd isc-dhcp-server wpasupplicant;
 ```
 
 ## Sounds
